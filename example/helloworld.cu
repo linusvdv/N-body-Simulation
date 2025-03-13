@@ -7,6 +7,7 @@ __global__ void cuda_hello(){
 }
 
 int main() {
+    printf("Mark was here\n");
     cuda_hello<<<2,2>>>(); 
     cudaDeviceSynchronize();
     return 0;
