@@ -37,6 +37,7 @@ int main(){
     cudaMemcpy(d_b, b, size, cudaMemcpyHostToDevice);
     cudaMemcpy(d_c, c, size, cudaMemcpyHostToDevice);
 
+    
     matrix_multi<<<n,n>>>(d_a, d_b, d_c);
     cudaDeviceSynchronize();
     cudaMemcpy(c, d_c, size, cudaMemcpyDeviceToHost);
