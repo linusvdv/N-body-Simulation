@@ -1,24 +1,26 @@
 #include <stdio.h>
 #include <cuda.h>
 #include <iostream>
-
-int const n = 512;
+#define int long long
+int const n = 32;
 __device__ int sz = n;
 #define IDX(i, j, N) ((i) * (N) + (j))
 
-__global__ void matrix_multi(int *a, int *b, int *c){
+__global__ void matrix_multi(int *a, int *b, int *c, int times){
 
     int row = blockIdx.x;
     int col = threadIdx.x;
 
-    int val = 0;
+    int val = c[IDX(row, col, sz)];
+    for(int j = 0; j<times; j++){
     for(int i = 0; i<sz; i++){
         val += a[IDX(row, i, sz)] * b[IDX(i, col, sz)];
+    }
     }
     c[IDX(row, col, sz)] = val;
 }
 
-int main(){
+signed main(){
     int a[n*n], b[n*n], c[n*n];
     int *d_a, *d_b, *d_c;
     int size = n * n * sizeof(int);
@@ -37,12 +39,14 @@ int main(){
     cudaMemcpy(d_b, b, size, cudaMemcpyHostToDevice);
     cudaMemcpy(d_c, c, size, cudaMemcpyHostToDevice);
 
-    
-    matrix_multi<<<n,n>>>(d_a, d_b, d_c);
+    for(int i = 0 ; i<1; i++){
+        matrix_multi<<<n,n>>>(d_a, d_b, d_c, 10000000);
+        //cudaDeviceSynchronize();
+    }
     cudaDeviceSynchronize();
     cudaMemcpy(c, d_c, size, cudaMemcpyDeviceToHost);
 
-    int res = 0;
+    long long res = 0;
     for(int i = 0; i < n; i++){
         for(int j = 0; j<n; j++)res += c[IDX(i, j, n)];
     }
@@ -51,6 +55,6 @@ int main(){
     cudaFree(d_b);
     cudaFree(d_c);
 
-    printf("%d\n", res);
+    printf("%lld\n", res);
     return 0;
 }
