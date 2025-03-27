@@ -14,7 +14,7 @@ __global__ void Square(const int *cuda_input, int *cuda_output, int num_elements
 
 
 int main() {
-    const int num_elements = 1024*1024;
+    const int num_elements = 128*1024;
     int* cuda_input = (int *)malloc(sizeof(int)*num_elements);
     int* cuda_output = (int *)malloc(sizeof(int)*num_elements);
     int* d_cuda_input;
