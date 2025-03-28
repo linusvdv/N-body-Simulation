@@ -1,5 +1,5 @@
-#include <__clang_cuda_runtime_wrapper.h>
 #include <cuda.h>
+#include <driver_types.h>
 #include <stdlib.h>
 #include <cmath>
 #include <cstdlib>
@@ -8,8 +8,8 @@
 
 
 const int kBlockDim = 64;
-const int kNumParticles = 128;
-const float kDeltaT = 0.1;
+const int kNumParticles = 2;
+__device__ const float kDeltaT = 0.1;
 const float kGravitationalConstant = 6.67430e-11;
 
 
@@ -26,30 +26,6 @@ struct Vec3 {
             return y;
         }
         return z;
-    }
-
-    Vec3 operator+(const Vec3& rhs) const {
-        return {x + rhs.x, y + rhs.y, z + rhs.z};
-    }
-
-    Vec3 operator-(const Vec3& rhs) const {
-        return {x - rhs.x, y - rhs.y, z - rhs.z};
-    }
-
-    Vec3 operator*(const Vec3& rhs) const {
-        return {x * rhs.x, y * rhs.y, z * rhs.z};
-    }
-
-    Vec3 operator*(const float& rhs) const {
-        return {x * rhs, y * rhs, z * rhs};
-    }
-
-    Vec3 operator/(const Vec3& rhs) const {
-        return {x / rhs.x, y / rhs.y, z / rhs.z};
-    }
-
-    bool operator==(const Vec3& rhs) const {
-        return x == rhs.x && y == rhs.y && z == rhs.z;
     }
 
     __device__ Vec3 operator+(const Vec3& rhs) const {
@@ -135,25 +111,44 @@ __global__ void DeriveAcc(Particle* particles) {
         if (i == index) {
             continue;
         }
-        particles[index].acc = particles[index].acc + GravitationalForce(particles[index], particles[i]);
+        particles[index].acc = particles[index].acc + GravitationalForce(particles[index], particles[i]) / particles[index].mass;
     }
 }
 
 
 int main() {
     Particle* particles = (Particle*)malloc(sizeof(Particle) * kNumParticles);
-    Particle* c_particles;
+    Particle* d_particles;
 
     std::default_random_engine gen;
     std::uniform_real_distribution<float> distribution_x(-10, 10);
     std::uniform_real_distribution<float> distribution_y(-10, 10);
     std::uniform_real_distribution<float> distribution_z(-2, 2); // top
-    std::uniform_real_distribution<float> distribution_mass(1, 100);
+    std::uniform_real_distribution<float> distribution_mass(1e9, 1e11);
 
     for (int i = 0; i < kNumParticles; i++) {
         Vec3 rand_pos = {distribution_x(gen), distribution_y(gen), distribution_z(gen)};
         particles[i] = {rand_pos, {0, 0, 0}, {0, 0, 0}, distribution_mass(gen), 10};
     }
 
+    cudaMalloc((void**)&d_particles, sizeof(Particle) * kNumParticles);
+    cudaMemcpy(d_particles, particles, sizeof(Particle) * kNumParticles, cudaMemcpyHostToDevice);
 
+    for (int timestep = 0; timestep < 10; timestep++) {
+        UpdateVelocityHalf<<<(kNumParticles/kBlockDim)+1, kBlockDim>>>(d_particles);
+        cudaDeviceSynchronize();
+        UpdatePosition<<<(kNumParticles/kBlockDim)+1, kBlockDim>>>(d_particles);
+        cudaDeviceSynchronize();
+        DeriveAcc<<<(kNumParticles/kBlockDim)+1, kBlockDim>>>(d_particles);
+        cudaDeviceSynchronize();
+        UpdateVelocityHalf<<<(kNumParticles/kBlockDim)+1, kBlockDim>>>(d_particles);
+        cudaDeviceSynchronize();
+
+        if (timestep % 1 == 0) {
+            cudaMemcpy(particles, d_particles, sizeof(Particle) * kNumParticles, cudaMemcpyDeviceToHost);
+            for (int i = 0; i < kNumParticles; i++) {
+                std::cout << timestep << ": " << particles[i].pos.x << ", " << particles[i].pos.y << ", " << particles[i].pos.z << "\n" << std::flush;
+            }
+        }
+    }
 }
