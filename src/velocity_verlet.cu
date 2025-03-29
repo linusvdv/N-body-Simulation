@@ -3,14 +3,19 @@
 #include <stdlib.h>
 #include <cmath>
 #include <cstdlib>
+#include <fstream>
+#include <ios>
 #include <iostream>
 #include <random>
 
 
-const int kBlockDim = 64;
-const int kNumParticles = 2;
-__device__ const float kDeltaT = 0.1;
+const std::string kFilename = "out.xyz";
+const int kBlockDim = 1024;
+const int kNumParticles = 1024;
+__device__ const float kDeltaT = 0.01;
 const float kGravitationalConstant = 6.67430e-11;
+const int kNumTimesteps = 10000;
+const int kNumTimestepsSnapshot = 10;
 
 
 struct Vec3 {
@@ -81,7 +86,7 @@ __global__ void UpdateVelocityHalf(Particle* particles) {
     if (index >= kNumParticles) {
         return;
     }
-    particles[index].vel = particles[index].vel + particles[index].acc * kDeltaT * 0.5;
+    particles[index].vel = particles[index].vel + particles[index].acc * kDeltaT / 2;
 }
 
 
@@ -97,7 +102,7 @@ __device__ Vec3 GetUnitVector(const Vec3& vec) {
 
 __device__ Vec3 GravitationalForce(const Particle& first, const Particle& second) {
     Vec3 direction_unit_vector = GetUnitVector(second.pos - first.pos);
-    float force = kGravitationalConstant * first.mass * second.mass / (GetNorm(second.pos - first.pos) * GetNorm(second.pos - first.pos));
+    float force = kGravitationalConstant * first.mass * second.mass / ((GetNorm(second.pos - first.pos) + 0.1) * (GetNorm(second.pos - first.pos) + 0.1));
     return direction_unit_vector * force;
 }
 
@@ -107,6 +112,7 @@ __global__ void DeriveAcc(Particle* particles) {
     if (index >= kNumParticles) {
         return;
     }
+    particles[index].acc = {0, 0, 0};
     for (int i = 0; i < kNumParticles; i++) {
         if (i == index) {
             continue;
@@ -117,24 +123,34 @@ __global__ void DeriveAcc(Particle* particles) {
 
 
 int main() {
+    {
+        std::ofstream outfile;
+        outfile.open(kFilename);
+        outfile << kNumParticles << " " << kNumTimesteps << " " << kNumTimestepsSnapshot << "\n";
+        outfile.close();
+    }
+    std::ofstream outfile(kFilename, std::ios_base::app);
+
     Particle* particles = (Particle*)malloc(sizeof(Particle) * kNumParticles);
     Particle* d_particles;
 
     std::default_random_engine gen;
-    std::uniform_real_distribution<float> distribution_x(-10, 10);
-    std::uniform_real_distribution<float> distribution_y(-10, 10);
+    std::uniform_real_distribution<float> distribution_x(-100, 100);
+    std::uniform_real_distribution<float> distribution_y(-100, 100);
     std::uniform_real_distribution<float> distribution_z(-2, 2); // top
-    std::uniform_real_distribution<float> distribution_mass(1e9, 1e11);
+    std::uniform_real_distribution<float> distribution_mass(1e9, 1e9);
+    std::uniform_real_distribution<float> distributaion_vel_x(-1, 1);
+    std::uniform_real_distribution<float> distributaion_vel_y(-1, 1);
 
     for (int i = 0; i < kNumParticles; i++) {
         Vec3 rand_pos = {distribution_x(gen), distribution_y(gen), distribution_z(gen)};
-        particles[i] = {rand_pos, {0, 0, 0}, {0, 0, 0}, distribution_mass(gen), 10};
+        particles[i] = {rand_pos, {distributaion_vel_x(gen), distributaion_vel_y(gen), 0}, {0, 0, 0}, distribution_mass(gen), 10};
     }
 
     cudaMalloc((void**)&d_particles, sizeof(Particle) * kNumParticles);
     cudaMemcpy(d_particles, particles, sizeof(Particle) * kNumParticles, cudaMemcpyHostToDevice);
 
-    for (int timestep = 0; timestep < 10; timestep++) {
+    for (int timestep = 0; timestep < kNumTimesteps; timestep++) {
         UpdateVelocityHalf<<<(kNumParticles/kBlockDim)+1, kBlockDim>>>(d_particles);
         cudaDeviceSynchronize();
         UpdatePosition<<<(kNumParticles/kBlockDim)+1, kBlockDim>>>(d_particles);
@@ -144,11 +160,13 @@ int main() {
         UpdateVelocityHalf<<<(kNumParticles/kBlockDim)+1, kBlockDim>>>(d_particles);
         cudaDeviceSynchronize();
 
-        if (timestep % 1 == 0) {
+        if (timestep % kNumTimestepsSnapshot == kNumTimestepsSnapshot-1) {
             cudaMemcpy(particles, d_particles, sizeof(Particle) * kNumParticles, cudaMemcpyDeviceToHost);
+            std::cout << timestep << std::endl;
             for (int i = 0; i < kNumParticles; i++) {
-                std::cout << timestep << ": " << particles[i].pos.x << ", " << particles[i].pos.y << ", " << particles[i].pos.z << "\n" << std::flush;
+                outfile << particles[i].pos.x << " " << particles[i].pos.y << " " << particles[i].pos.z << "\n";
             }
+            outfile << "\n";
         }
     }
 }
