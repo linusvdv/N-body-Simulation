@@ -2,6 +2,7 @@
 #include <driver_types.h>
 #include <stdlib.h>
 #include <cmath>
+#include <cstdio>
 #include <cstdlib>
 #include <fstream>
 #include <ios>
@@ -12,7 +13,7 @@
 const std::string kFilename = "out.xyz";
 const int kBlockDim = 1024;
 const int kNumParticles = 10;
-__device__ const float kDeltaT = 0.001;
+__device__ const float kDeltaT = 0.1;
 const float kGravitationalConstant = 6.67430e-11;
 const int kNumTimesteps = 100000;
 const int kNumTimestepsSnapshot = 100;
@@ -68,7 +69,7 @@ struct Particle {
     Vec3 vel;
     Vec3 acc;
     float mass;
-    float radius = 0;
+    float radius;
     float potential_energy = 0;
     float kinetic_energy = 0;
 };
@@ -149,7 +150,7 @@ __global__ void CalculateKinetic(Particle* particles) {
     if (index >= kNumParticles) {
         return;
     }
-    particles[index].kinetic_energy = 1 / 2 * particles[index].mass * GetNorm(particles[index].vel) * GetNorm(particles[index].vel);
+    particles[index].kinetic_energy = 1. / 2 * particles[index].mass * GetNorm(particles[index].vel) * GetNorm(particles[index].vel);
 }
 
 
