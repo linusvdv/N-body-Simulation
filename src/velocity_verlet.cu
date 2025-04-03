@@ -11,11 +11,11 @@
 
 const std::string kFilename = "out.xyz";
 const int kBlockDim = 1024;
-const int kNumParticles = 1024;
-__device__ const float kDeltaT = 0.01;
+const int kNumParticles = 10;
+__device__ const float kDeltaT = 0.001;
 const float kGravitationalConstant = 6.67430e-11;
-const int kNumTimesteps = 10000;
-const int kNumTimestepsSnapshot = 10;
+const int kNumTimesteps = 100000;
+const int kNumTimestepsSnapshot = 100;
 
 
 struct Vec3 {
@@ -68,7 +68,9 @@ struct Particle {
     Vec3 vel;
     Vec3 acc;
     float mass;
-    float radius;
+    float radius = 0;
+    float potential_energy = 0;
+    float kinetic_energy = 0;
 };
 
 
@@ -122,6 +124,35 @@ __global__ void DeriveAcc(Particle* particles) {
 }
 
 
+__device__ float GetPotential(const Particle& first, const Particle& second) {
+    return kGravitationalConstant * first.mass * second.mass / (GetNorm(second.pos - first.pos) + 0.1);
+}
+
+
+__global__ void CalculatePotential(Particle* particles) {
+    int index = threadIdx.x + blockIdx.x * blockDim.x;
+    if (index >= kNumParticles) {
+        return;
+    }
+    particles[index].potential_energy = 0;
+    for (int i = 0; i < kNumParticles; i++) {
+        if (i == index) {
+            continue;
+        }
+        particles[index].potential_energy = particles[index].potential_energy + GetPotential(particles[index], particles[i]);
+    }
+}
+
+
+__global__ void CalculateKinetic(Particle* particles) {
+    int index = threadIdx.x + blockIdx.x * blockDim.x;
+    if (index >= kNumParticles) {
+        return;
+    }
+    particles[index].kinetic_energy = 1 / 2 * particles[index].mass * GetNorm(particles[index].vel) * GetNorm(particles[index].vel);
+}
+
+
 int main() {
     {
         std::ofstream outfile;
@@ -139,8 +170,8 @@ int main() {
     std::uniform_real_distribution<float> distribution_y(-100, 100);
     std::uniform_real_distribution<float> distribution_z(-2, 2); // top
     std::uniform_real_distribution<float> distribution_mass(1e9, 1e9);
-    std::uniform_real_distribution<float> distributaion_vel_x(-1, 1);
-    std::uniform_real_distribution<float> distributaion_vel_y(-1, 1);
+    std::uniform_real_distribution<float> distributaion_vel_x(-0, 0);
+    std::uniform_real_distribution<float> distributaion_vel_y(-0, 0);
 
     for (int i = 0; i < kNumParticles; i++) {
         Vec3 rand_pos = {distribution_x(gen), distribution_y(gen), distribution_z(gen)};
@@ -161,11 +192,22 @@ int main() {
         cudaDeviceSynchronize();
 
         if (timestep % kNumTimestepsSnapshot == kNumTimestepsSnapshot-1) {
+            CalculatePotential<<<(kNumParticles/kBlockDim)+1, kBlockDim>>>(d_particles);
+            cudaDeviceSynchronize();
+            CalculateKinetic<<<(kNumParticles/kBlockDim)+1, kBlockDim>>>(d_particles);
+            cudaDeviceSynchronize();
             cudaMemcpy(particles, d_particles, sizeof(Particle) * kNumParticles, cudaMemcpyDeviceToHost);
-            std::cout << timestep << std::endl;
+            float potential_energy = 0;
+            float kinetic_energy = 0;
             for (int i = 0; i < kNumParticles; i++) {
-                outfile << particles[i].pos.x << " " << particles[i].pos.y << " " << particles[i].pos.z << "\n";
+                potential_energy += particles[i].potential_energy / 2;
+                kinetic_energy += particles[i].kinetic_energy;
             }
+
+            std::cout << timestep << " " << potential_energy << " " << kinetic_energy << " "<< potential_energy + kinetic_energy << std::endl;
+            /*for (int i = 0; i < kNumParticles; i++) {
+                outfile << particles[i].pos.x << " " << particles[i].pos.y << " " << particles[i].pos.z << "\n";
+            }*/
             outfile << "\n";
         }
     }
