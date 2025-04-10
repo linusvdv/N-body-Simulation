@@ -12,11 +12,13 @@
 
 const std::string kFilename = "out.xyz";
 const int kBlockDim = 1024;
-const int kNumParticles = 10;
+const int kNumParticles = 1024;
 __device__ const float kDeltaT = 0.1;
 const float kGravitationalConstant = 6.67430e-11;
 const int kNumTimesteps = 100000;
-const int kNumTimestepsSnapshot = 100;
+const int kNumTimestepsSnapshot = 500;
+__device__ const float kDDistance = 4;
+constexpr int kGridDim = (kNumParticles-1)/kBlockDim+1;
 
 
 struct Vec3 {
@@ -105,7 +107,7 @@ __device__ Vec3 GetUnitVector(const Vec3& vec) {
 
 __device__ Vec3 GravitationalForce(const Particle& first, const Particle& second) {
     Vec3 direction_unit_vector = GetUnitVector(second.pos - first.pos);
-    float force = kGravitationalConstant * first.mass * second.mass / ((GetNorm(second.pos - first.pos) + 0.1) * (GetNorm(second.pos - first.pos) + 0.1));
+    float force = kGravitationalConstant * first.mass * second.mass / ((GetNorm(second.pos - first.pos) + kDDistance) * (GetNorm(second.pos - first.pos) + kDDistance));
     return direction_unit_vector * force;
 }
 
@@ -126,7 +128,7 @@ __global__ void DeriveAcc(Particle* particles) {
 
 
 __device__ float GetPotential(const Particle& first, const Particle& second) {
-    return kGravitationalConstant * first.mass * second.mass / (GetNorm(second.pos - first.pos) + 0.1);
+    return -kGravitationalConstant * first.mass * second.mass / (GetNorm(second.pos - first.pos) + kDDistance);
 }
 
 
@@ -167,12 +169,12 @@ int main() {
     Particle* d_particles;
 
     std::default_random_engine gen;
-    std::uniform_real_distribution<float> distribution_x(-100, 100);
-    std::uniform_real_distribution<float> distribution_y(-100, 100);
+    std::uniform_real_distribution<float> distribution_x(-500, 500);
+    std::uniform_real_distribution<float> distribution_y(-500, 500);
     std::uniform_real_distribution<float> distribution_z(-2, 2); // top
     std::uniform_real_distribution<float> distribution_mass(1e9, 1e9);
-    std::uniform_real_distribution<float> distributaion_vel_x(-0, 0);
-    std::uniform_real_distribution<float> distributaion_vel_y(-0, 0);
+    std::uniform_real_distribution<float> distributaion_vel_x(-0.1, 0.1);
+    std::uniform_real_distribution<float> distributaion_vel_y(-0.1, 0.1);
 
     for (int i = 0; i < kNumParticles; i++) {
         Vec3 rand_pos = {distribution_x(gen), distribution_y(gen), distribution_z(gen)};
@@ -183,19 +185,19 @@ int main() {
     cudaMemcpy(d_particles, particles, sizeof(Particle) * kNumParticles, cudaMemcpyHostToDevice);
 
     for (int timestep = 0; timestep < kNumTimesteps; timestep++) {
-        UpdateVelocityHalf<<<(kNumParticles/kBlockDim)+1, kBlockDim>>>(d_particles);
+        UpdateVelocityHalf<<<kGridDim, kBlockDim>>>(d_particles);
         cudaDeviceSynchronize();
-        UpdatePosition<<<(kNumParticles/kBlockDim)+1, kBlockDim>>>(d_particles);
+        UpdatePosition<<<kGridDim, kBlockDim>>>(d_particles);
         cudaDeviceSynchronize();
-        DeriveAcc<<<(kNumParticles/kBlockDim)+1, kBlockDim>>>(d_particles);
+        DeriveAcc<<<kGridDim, kBlockDim>>>(d_particles);
         cudaDeviceSynchronize();
-        UpdateVelocityHalf<<<(kNumParticles/kBlockDim)+1, kBlockDim>>>(d_particles);
+        UpdateVelocityHalf<<<kGridDim, kBlockDim>>>(d_particles);
         cudaDeviceSynchronize();
 
         if (timestep % kNumTimestepsSnapshot == kNumTimestepsSnapshot-1) {
-            CalculatePotential<<<(kNumParticles/kBlockDim)+1, kBlockDim>>>(d_particles);
+            CalculatePotential<<<kGridDim, kBlockDim>>>(d_particles);
             cudaDeviceSynchronize();
-            CalculateKinetic<<<(kNumParticles/kBlockDim)+1, kBlockDim>>>(d_particles);
+            CalculateKinetic<<<kGridDim, kBlockDim>>>(d_particles);
             cudaDeviceSynchronize();
             cudaMemcpy(particles, d_particles, sizeof(Particle) * kNumParticles, cudaMemcpyDeviceToHost);
             float potential_energy = 0;
@@ -206,9 +208,9 @@ int main() {
             }
 
             std::cout << timestep << " " << potential_energy << " " << kinetic_energy << " "<< potential_energy + kinetic_energy << std::endl;
-            /*for (int i = 0; i < kNumParticles; i++) {
+            for (int i = 0; i < kNumParticles; i++) {
                 outfile << particles[i].pos.x << " " << particles[i].pos.y << " " << particles[i].pos.z << "\n";
-            }*/
+            }
             outfile << "\n";
         }
     }

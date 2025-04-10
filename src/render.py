@@ -23,9 +23,9 @@ for i in range(num_particles):
 # Create figure and axis
 fig = plt.figure()
 ax = fig.add_subplot(111, projection='3d')
-ax.set_xlim(-200, 200)
-ax.set_ylim(-200, 200)
-ax.set_zlim(-200, 200)
+ax.set_xlim(-600, 600)
+ax.set_ylim(-600, 600)
+ax.set_zlim(-600, 600)
 sc = ax.scatter(x, y, z)
 
 def update(frame):
