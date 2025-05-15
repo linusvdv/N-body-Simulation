@@ -3,8 +3,9 @@ import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 import matplotlib.animation as animation
 
+axis_size = 500
 
-filename = "out.xyz"
+filename = "RKout.xyz"
 file = open(filename, "r").read().split()
 
 num_particles = int(file[0])
@@ -23,9 +24,9 @@ for i in range(num_particles):
 # Create figure and axis
 fig = plt.figure()
 ax = fig.add_subplot(111, projection='3d')
-ax.set_xlim(-600, 600)
-ax.set_ylim(-600, 600)
-ax.set_zlim(-600, 600)
+ax.set_xlim(-axis_size, axis_size)
+ax.set_ylim(-axis_size, axis_size)
+ax.set_zlim(-axis_size, axis_size)
 sc = ax.scatter(x, y, z)
 
 def update(frame):
@@ -40,5 +41,5 @@ def update(frame):
     sc._offsets3d = (x, y, z)
     return sc,
 
-ani = animation.FuncAnimation(fig, update, frames=int(num_timesteps/num_timesteps_snapshot), interval=50, blit=False)
+ani = animation.FuncAnimation(fig, update, frames=range(0, num_timesteps//num_timesteps_snapshot, 100), interval=50, blit=False)
 plt.show()
