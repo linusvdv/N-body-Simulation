@@ -10,7 +10,7 @@ const std::string kEnergyFilename = "out.energy";
 const std::string kMomentumFilename = "out.momentum";
 
 // setup specific parameters
-const int kNumParticles = 3;
+const int kNumBodies = 3;
 __device__ const float kDeltaT = 0.001;
 const int kNumTimesteps = 900000;
 const int kNumTimestepsSnapshot = 100;
@@ -21,7 +21,7 @@ __device__ const float kEpsilon = 0;
 
 // cuda block and grid size
 const int kBlockDim = 32;
-constexpr int kGridDim = ((kNumParticles-1)/kBlockDim)+1;
+constexpr int kGridDim = ((kNumBodies-1)/kBlockDim)+1;
 
 
 // use a 3d vector in cuda
@@ -85,22 +85,22 @@ struct Body {
 
 
 // update the position on the GPU
-__global__ void UpdatePosition(Body* particles) {
+__global__ void UpdatePosition(Body* bodies) {
     int index = threadIdx.x + (blockIdx.x * blockDim.x);
-    if (index >= kNumParticles) {
+    if (index >= kNumBodies) {
         return;
     }
-    particles[index].pos = particles[index].pos + particles[index].vel * kDeltaT;
+    bodies[index].pos = bodies[index].pos + bodies[index].vel * kDeltaT;
 }
 
 
 // update the velocity on the GPU
-__global__ void UpdateVelocityHalf(Body* particles) {
+__global__ void UpdateVelocityHalf(Body* bodies) {
     int index = threadIdx.x + (blockIdx.x * blockDim.x);
-    if (index >= kNumParticles) {
+    if (index >= kNumBodies) {
         return;
     }
-    particles[index].vel = particles[index].vel + particles[index].acc * kDeltaT / 2;
+    bodies[index].vel = bodies[index].vel + bodies[index].acc * kDeltaT / 2;
 }
 
 
@@ -113,18 +113,18 @@ __device__ Vec3 GravitationalForce(const Body& first, const Body& second) {
 
 
 // derive the acceleration at a specific moment in time
-__global__ void DeriveAcc(Body* particles) {
+__global__ void DeriveAcc(Body* bodies) {
     int index = threadIdx.x + (blockIdx.x * blockDim.x);
-    if (index >= kNumParticles) {
+    if (index >= kNumBodies) {
         return;
     }
-    // sum up all forces of the different other particles
-    particles[index].acc = {0, 0, 0};
-    for (int i = 0; i < kNumParticles; i++) {
+    // sum up all forces of the different other bodies
+    bodies[index].acc = {0, 0, 0};
+    for (int i = 0; i < kNumBodies; i++) {
         if (i == index) {
             continue;
         }
-        particles[index].acc = particles[index].acc + GravitationalForce(particles[index], particles[i]) / particles[index].mass;
+        bodies[index].acc = bodies[index].acc + GravitationalForce(bodies[index], bodies[i]) / bodies[index].mass;
     }
 }
 
@@ -136,28 +136,28 @@ __device__ float GetPotential(const Body& first, const Body& second) {
 
 
 // calculate the potential energy of all bodies
-__global__ void CalculatePotential(Body* particles) {
+__global__ void CalculatePotential(Body* bodies) {
     int index = threadIdx.x + (blockIdx.x * blockDim.x);
-    if (index >= kNumParticles) {
+    if (index >= kNumBodies) {
         return;
     }
-    particles[index].potential_energy = 0;
-    for (int i = 0; i < kNumParticles; i++) {
+    bodies[index].potential_energy = 0;
+    for (int i = 0; i < kNumBodies; i++) {
         if (i == index) {
             continue;
         }
-        particles[index].potential_energy = particles[index].potential_energy + GetPotential(particles[index], particles[i]);
+        bodies[index].potential_energy = bodies[index].potential_energy + GetPotential(bodies[index], bodies[i]);
     }
 }
 
 
 // calculate the kinetic energy of all bodies
-__global__ void CalculateKinetic(Body* particles) {
+__global__ void CalculateKinetic(Body* bodies) {
     int index = threadIdx.x + (blockIdx.x * blockDim.x);
-    if (index >= kNumParticles) {
+    if (index >= kNumBodies) {
         return;
     }
-    particles[index].kinetic_energy = 1. / 2 * particles[index].mass * GetNorm(particles[index].vel) * GetNorm(particles[index].vel);
+    bodies[index].kinetic_energy = 1. / 2 * bodies[index].mass * GetNorm(bodies[index].vel) * GetNorm(bodies[index].vel);
 }
 
 
@@ -166,7 +166,7 @@ int main() {
     {
         std::ofstream outfile;
         outfile.open(kFilename);
-        outfile << kNumParticles << " " << kNumTimesteps << " " << kNumTimestepsSnapshot << "\n";
+        outfile << kNumBodies << " " << kNumTimesteps << " " << kNumTimestepsSnapshot << "\n";
         outfile.close();
         std::ofstream potential_file;
         std::ofstream momentum_file;
@@ -180,10 +180,10 @@ int main() {
     std::ofstream momentum_file(kMomentumFilename, std::ios_base::app);
 
     // create the bodies on the CPU
-    Body* bodies = (Body*)malloc(sizeof(Body) * kNumParticles);
+    Body* bodies = (Body*)malloc(sizeof(Body) * kNumBodies);
     // allocate the bodies on the device GPU
     Body* d_bodies;
-    cudaMalloc((void**)&d_bodies, sizeof(Body) * kNumParticles);
+    cudaMalloc((void**)&d_bodies, sizeof(Body) * kNumBodies);
 
     // set the position randomly in 3d space
     std::default_random_engine gen;
@@ -194,13 +194,13 @@ int main() {
     std::uniform_real_distribution<float> distributaion_vel_x(-0.1, 0.1);
     std::uniform_real_distribution<float> distributaion_vel_y(-0.1, 0.1);
 
-    for (int i = 0; i < kNumParticles; i++) {
+    for (int i = 0; i < kNumBodies; i++) {
         Vec3 rand_pos = {distribution_x(gen), distribution_y(gen), distribution_z(gen)};
         bodies[i] = {rand_pos, {distributaion_vel_x(gen), distributaion_vel_y(gen), 0}, {0, 0, 0}, distribution_mass(gen)};
     }
 
     // copy the bodies from CPU to GPU
-    cudaMemcpy(d_bodies, bodies, sizeof(Body) * kNumParticles, cudaMemcpyHostToDevice);
+    cudaMemcpy(d_bodies, bodies, sizeof(Body) * kNumBodies, cudaMemcpyHostToDevice);
 
     // get the starting values
     float start_potential_energy = 0;
@@ -208,8 +208,8 @@ int main() {
     {
         CalculatePotential<<<kGridDim, kBlockDim>>>(d_bodies);
         CalculateKinetic<<<kGridDim, kBlockDim>>>(d_bodies);
-        cudaMemcpy(bodies, d_bodies, sizeof(Body) * kNumParticles, cudaMemcpyDeviceToHost);
-        for (int i = 0; i < kNumParticles; i++) {
+        cudaMemcpy(bodies, d_bodies, sizeof(Body) * kNumBodies, cudaMemcpyDeviceToHost);
+        for (int i = 0; i < kNumBodies; i++) {
             start_potential_energy += bodies[i].potential_energy / 2;
             start_kinetic_energy += bodies[i].kinetic_energy;
         }
@@ -227,11 +227,11 @@ int main() {
             // save every kNumTimestepsSnapshot frame and calculate the energy state
             CalculatePotential<<<kGridDim, kBlockDim>>>(d_bodies);
             CalculateKinetic<<<kGridDim, kBlockDim>>>(d_bodies);
-            cudaMemcpy(bodies, d_bodies, sizeof(Body) * kNumParticles, cudaMemcpyDeviceToHost);
+            cudaMemcpy(bodies, d_bodies, sizeof(Body) * kNumBodies, cudaMemcpyDeviceToHost);
             float potential_energy = 0;
             float kinetic_energy = 0;
             Vec3 total_momentum = {0, 0, 0};
-            for (int i = 0; i < kNumParticles; i++) {
+            for (int i = 0; i < kNumBodies; i++) {
                 potential_energy += bodies[i].potential_energy / 2;
                 kinetic_energy += bodies[i].kinetic_energy;
                 total_momentum = total_momentum + bodies[i].vel * bodies[i].mass;
@@ -241,7 +241,7 @@ int main() {
             std::cout << timestep << std::endl;
             potential_file << timestep * kDeltaT << " " << potential_energy-start_potential_energy << " " << kinetic_energy-start_kinetic_energy << " "<< potential_energy-start_potential_energy + kinetic_energy-start_kinetic_energy << std::endl;
             momentum_file << timestep * kDeltaT << " " << total_momentum.x << " " << total_momentum.y << " " << total_momentum.z << " " << GetNorm(total_momentum) << std::endl;
-            for (int i = 0; i < kNumParticles; i++) {
+            for (int i = 0; i < kNumBodies; i++) {
                 outfile << bodies[i].pos.x << " " << bodies[i].pos.y << " " << bodies[i].pos.z << "\n";
             }
             outfile << "\n";
