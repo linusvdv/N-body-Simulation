@@ -1,7 +1,6 @@
 #include <cuda.h>
 #include <string>
 #include <fstream>
-#include <random>
 #include <iostream>
 
 #define folat double
@@ -9,11 +8,11 @@
 const std::string kFilename = "RKout.xyz";
 const std::string kPotentialFilename = "RKout.energy";
 const std::string kMomentumFilename = "RKout.momentum";
-const int kBlockDim = 64;
+const int kBlockDim = 16;
 const int kNumParticles = 3;
-__device__ const float kDeltaT = 0.0003;
+__device__ const float kDeltaT = 1;
 __device__ const float kGravitationalConstant = 6.67430e-11;
-const int kNumTimesteps = 2700000;
+const int kNumTimesteps = 31556952+ 10000;
 const int kNumTimestepsSnapshot = 100;
 __device__ const float kDDistance = 0;
 constexpr int kGridDim = ((kNumParticles-1)/kBlockDim)+1;
@@ -192,22 +191,9 @@ int main() {
     Particle* particles = (Particle*)malloc(sizeof(Particle) * kNumParticles);
     Particle* d_particles;
 
-    std::default_random_engine gen;
-    std::uniform_real_distribution<float> distribution_x(-50, 50);
-    std::uniform_real_distribution<float> distribution_y(-50, 50);
-    std::uniform_real_distribution<float> distribution_z(-2, 2); // top
-    std::uniform_real_distribution<float> distribution_mass(1e9, 1e9);
-    std::uniform_real_distribution<float> distributaion_vel_x(-0.1, 0.1);
-    std::uniform_real_distribution<float> distributaion_vel_y(-0.1, 0.1);
-
-    for (int i = 0; i < kNumParticles; i++) {
-        Vec3 rand_pos = {distribution_x(gen), distribution_y(gen), distribution_z(gen)};
-        particles[i] = {
-            {rand_pos, {distributaion_vel_x(gen), distributaion_vel_y(gen), 0}},
-            distribution_mass(gen),
-            10
-        };
-    }
+    particles[0] = {{{0.000000e+00, 0.000000e+00, 0.000000e+00}, {0.000000e+00, 0.000000e+00, 0.000000e+00}}, 1.9885e+30, 1};
+    particles[1] = {{{-2.649903e+10, 1.446973e+11, -6.111494e+05}, {-2.979426e+04, -5.469295e+03, 1.817837e-01}}, 5.9722e+24, 1};
+    particles[2] = {{{-2.679064e+10, 1.444223e+11, 3.566005e+07}, {-2.915073e+04, -6.200279e+03, -1.132468e+01}}, 7.342e+22, 1};
 
     cudaMalloc((void**)&d_particles, sizeof(Particle) * kNumParticles);
     cudaMemcpy(d_particles, particles, sizeof(Particle) * kNumParticles, cudaMemcpyHostToDevice);
@@ -217,11 +203,8 @@ int main() {
     float start_kinetic_energy = 0;
     {
         CalculatePotential<<<kGridDim, kBlockDim>>>(d_particles);
-        cudaDeviceSynchronize();
         CalculateKinetic<<<kGridDim, kBlockDim>>>(d_particles);
-        cudaDeviceSynchronize();
         cudaMemcpy(particles, d_particles, sizeof(Particle) * kNumParticles, cudaMemcpyDeviceToHost);
-        cudaDeviceSynchronize();
         for (int i = 0; i < kNumParticles; i++) {
             start_potential_energy += particles[i].potential_energy / 2;
             start_kinetic_energy += particles[i].kinetic_energy;
@@ -230,21 +213,14 @@ int main() {
 
     for (int timestep = 0; timestep < kNumTimesteps; timestep++) {
         DeriveKS<1><<<kGridDim, kBlockDim>>>(d_particles);
-        cudaDeviceSynchronize();
         DeriveKS<2><<<kGridDim, kBlockDim>>>(d_particles);
-        cudaDeviceSynchronize();
         DeriveKS<3><<<kGridDim, kBlockDim>>>(d_particles);
-        cudaDeviceSynchronize();
         DeriveKS<4><<<kGridDim, kBlockDim>>>(d_particles);
-        cudaDeviceSynchronize();
         UpdatePositionVelocity<<<kGridDim, kBlockDim>>>(d_particles);
-        cudaDeviceSynchronize();
 
         if (timestep % kNumTimestepsSnapshot == kNumTimestepsSnapshot-1) {
             CalculatePotential<<<kGridDim, kBlockDim>>>(d_particles);
-            cudaDeviceSynchronize();
             CalculateKinetic<<<kGridDim, kBlockDim>>>(d_particles);
-            cudaDeviceSynchronize();
             cudaMemcpy(particles, d_particles, sizeof(Particle) * kNumParticles, cudaMemcpyDeviceToHost);
             float potential_energy = 0;
             float kinetic_energy = 0;

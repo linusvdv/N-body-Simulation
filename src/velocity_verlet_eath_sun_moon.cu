@@ -10,8 +10,8 @@ const std::string kMomentumFilename = "out.momentum";
 
 // setup specific parameters
 const int kNumBodies = 3;
-__device__ const double kDeltaT = 1;
-const int kNumTimesteps = 9000000;
+__device__ const double kDeltaT = 1; // s
+const int kNumTimesteps = 31556952+ 10000;
 const int kNumTimestepsSnapshot = 100;
 
 // physical constant
@@ -184,9 +184,9 @@ int main() {
     Body* d_bodies;
     cudaMalloc((void**)&d_bodies, sizeof(Body) * kNumBodies);
 
-    bodies[0] = {{0, 0, 0}, {0, 0, 0}, {0, 0, 0}, 1.9885e30}; // sun
-    bodies[1] = {{-2.649903e+10, 1.446973e+11, -6.111494e+05}, {-2.979426e+04, -5.469295e+03, 1.817837e-01}, {0, 0, 0}, 5.9722e24}; // eath
-    bodies[2] = {{-2.679064e+10, 1.444223e+11, 3.566005e+07}, {-2.915073e+04, -6.200279e+03, -1.132468e+01}, {0, 0, 0}, 7.3477e22}; // moon
+    bodies[0] = {{0.000000e+00, 0.000000e+00, 0.000000e+00}, {0.000000e+00, 0.000000e+00, 0.000000e+00}, {0, 0, 0}, 1.9885e+30};
+    bodies[1] = {{-2.649903e+10, 1.446973e+11, -6.111494e+05}, {-2.979426e+04, -5.469295e+03, 1.817837e-01}, {0, 0, 0}, 5.9722e+24};
+    bodies[2] = {{-2.679064e+10, 1.444223e+11, 3.566005e+07}, {-2.915073e+04, -6.200279e+03, -1.132468e+01}, {0, 0, 0}, 7.342e+22};
 
     // copy the bodies from CPU to GPU
     cudaMemcpy(d_bodies, bodies, sizeof(Body) * kNumBodies, cudaMemcpyHostToDevice);

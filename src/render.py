@@ -3,9 +3,9 @@ import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 import matplotlib.animation as animation
 
-axis_size = 500
+axis_size = 4e12
 
-filename = "RKout.xyz"
+filename = "./planets/out.xyz"
 file = open(filename, "r").read().split()
 
 num_particles = int(file[0])
@@ -41,5 +41,5 @@ def update(frame):
     sc._offsets3d = (x, y, z)
     return sc,
 
-ani = animation.FuncAnimation(fig, update, frames=range(0, num_timesteps//num_timesteps_snapshot, 100), interval=50, blit=False)
+ani = animation.FuncAnimation(fig, update, frames=range(0, num_timesteps//num_timesteps_snapshot, 20), interval=50, blit=False)
 plt.show()
