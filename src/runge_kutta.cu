@@ -3,19 +3,19 @@
 #include <fstream>
 #include <iostream>
 
-#define folat double
+#define float double
 
 const std::string kFilename = "RKout.xyz";
 const std::string kPotentialFilename = "RKout.energy";
 const std::string kMomentumFilename = "RKout.momentum";
 const int kBlockDim = 16;
-const int kNumParticles = 3;
-__device__ const float kDeltaT = 1;
+const int kNumParticles = 10;
 __device__ const float kGravitationalConstant = 6.67430e-11;
-const int kNumTimesteps = 31556952+ 10000;
 const int kNumTimestepsSnapshot = 100;
 __device__ const float kDDistance = 0;
 constexpr int kGridDim = ((kNumParticles-1)/kBlockDim)+1;
+__device__ const double kDeltaT = 1000; // s
+const int kNumTimesteps = 31556950;
 
 
 struct Vec3 {
@@ -105,13 +105,13 @@ __device__ Vec3 GetUnitVector(const Vec3& vec) {
 
 __device__ Vec3 GravitationalAcceleration(const State& first, const State& second, const float& other_mass) {
     float norm = GetChangedNorm(second.pos - first.pos);
-    Vec3 force = (second.pos - first.pos) * kGravitationalConstant * other_mass / (norm * norm * norm);
+    Vec3 force = (second.pos - first.pos) * kGravitationalConstant / (norm * norm) * other_mass / norm;
     return force;
 }
 
 
 __device__ float GetPotential(const Particle& first, const Particle& second) {
-    return -kGravitationalConstant * first.mass * second.mass / GetChangedNorm(second.state.pos - first.state.pos);
+    return -kGravitationalConstant * first.mass / GetChangedNorm(second.state.pos - first.state.pos) * second.mass;
 }
 
 
@@ -191,9 +191,16 @@ int main() {
     Particle* particles = (Particle*)malloc(sizeof(Particle) * kNumParticles);
     Particle* d_particles;
 
-    particles[0] = {{{0.000000e+00, 0.000000e+00, 0.000000e+00}, {0.000000e+00, 0.000000e+00, 0.000000e+00}}, 1.9885e+30, 1};
-    particles[1] = {{{-2.649903e+10, 1.446973e+11, -6.111494e+05}, {-2.979426e+04, -5.469295e+03, 1.817837e-01}}, 5.9722e+24, 1};
-    particles[2] = {{{-2.679064e+10, 1.444223e+11, 3.566005e+07}, {-2.915073e+04, -6.200279e+03, -1.132468e+01}}, 7.342e+22, 1};
+    particles[0] = {{{0.000000e+00, 0.000000e+00, 0.000000e+00}, {0.000000e+00, 0.000000e+00, 0.000000e+00}}, 1.9885e+30};
+    particles[1] = {{{-1.946173e+10, -6.691328e+10, -3.679854e+09}, {3.699499e+04, -1.116442e+04, -4.307628e+03}}, 3.3011e+23};
+    particles[2] = {{{-1.074565e+11, -4.885015e+09, 6.135634e+09}, {1.381906e+03, -3.514030e+04, -5.600423e+02}}, 4.8675e+24};
+    particles[3] = {{{-2.679064e+10, 1.444223e+11, 3.566005e+07}, {-2.915073e+04, -6.200279e+03, -1.132468e+01}}, 7.342e+22};
+    particles[4] = {{{-2.649903e+10, 1.446973e+11, -6.111494e+05}, {-2.979426e+04, -5.469295e+03, 1.817837e-01}}, 5.9722e+24};
+    particles[5] = {{{2.080481e+11, -2.007053e+09, -5.156289e+09}, {1.162672e+03, 2.629606e+04, 5.222970e+02}}, 6.4171e+23};
+    particles[6] = {{{5.985676e+11, 4.396047e+11, -1.522686e+10}, {-7.909860e+03, 1.115622e+04, 1.308657e+02}}, 1.8982e+27};
+    particles[7] = {{{9.583854e+11, 9.828563e+11, -5.521298e+10}, {-7.431213e+03, 6.736756e+03, 1.777383e+02}}, 5.6834e+26};
+    particles[8] = {{{2.158975e+12, -2.054626e+12, -3.562550e+10}, {4.637272e+03, 4.627598e+03, -4.292187e+01}}, 8.681e+25};
+    particles[9] = {{{2.515046e+12, -3.738715e+12, 1.903222e+10}, {4.465275e+03, 3.075980e+03, -1.662486e+02}}, 1.0241e+26};
 
     cudaMalloc((void**)&d_particles, sizeof(Particle) * kNumParticles);
     cudaMemcpy(d_particles, particles, sizeof(Particle) * kNumParticles, cudaMemcpyHostToDevice);
