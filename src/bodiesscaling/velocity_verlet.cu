@@ -1,4 +1,5 @@
 #include <cuda.h>
+#include <cuda_device_runtime_api.h>
 #include <fstream>
 #include <iostream>
 #include <random>
@@ -12,7 +13,7 @@ const std::string kMomentumFilename = "out100000.momentum";
 // setup specific parameters
 const int kNumBodies = 100000;
 __device__ const float kDeltaT = 0.001;
-const int kNumTimesteps = 9000;
+const int kNumTimesteps = 900;
 const int kNumTimestepsSnapshot = 100000;
 
 // physical constant
@@ -20,7 +21,7 @@ __device__ const float kGravitationalConstant = 6.67430e-11;
 __device__ const float kEpsilon = 0;
 
 // cuda block and grid size
-const int kBlockDim = 64;
+const int kBlockDim = 16;
 constexpr int kGridDim = ((kNumBodies-1)/kBlockDim)+1;
 
 
@@ -190,7 +191,7 @@ int main() {
     std::uniform_real_distribution<float> distribution_x(-50, 50);
     std::uniform_real_distribution<float> distribution_y(-50, 50);
     std::uniform_real_distribution<float> distribution_z(-2, 2); // top
-    std::uniform_real_distribution<float> distribution_mass(1e9, 1e9);
+    std::uniform_real_distribution<float> distribution_mass(1e1, 1e1);
     std::uniform_real_distribution<float> distributaion_vel_x(-0.1, 0.1);
     std::uniform_real_distribution<float> distributaion_vel_y(-0.1, 0.1);
 
@@ -222,6 +223,8 @@ int main() {
         UpdatePosition<<<kGridDim, kBlockDim>>>(d_bodies);
         DeriveAcc<<<kGridDim, kBlockDim>>>(d_bodies);
         UpdateVelocityHalf<<<kGridDim, kBlockDim>>>(d_bodies);
+        cudaDeviceSynchronize();
+        std::cout << timestep << std::endl;
 
         if (timestep % kNumTimestepsSnapshot == kNumTimestepsSnapshot-1) {
             // save every kNumTimestepsSnapshot frame and calculate the energy state
